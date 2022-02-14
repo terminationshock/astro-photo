@@ -16,15 +16,16 @@ class AstroFrame:
     FRAME_LIGHT = 0
     FRAME_DARK = 1
     FRAME_SUM = 2
+    FRAME_LIVE = 3
 
     def __init__(self, image, description, frameId):
-        self.original_image = image
+        self.originalImage = image
         self.description = description
         self.frameId = frameId
 
-        self.data = AstroFrame.brightness(self.original_image)
+        self.data = AstroFrame.brightness(self.originalImage)
         self.height, self.width = self.data.shape
-        self.image = self.original_image.copy()
+        self.image = self.originalImage.copy()
         self.point = None
         self.offset = (0,0)
         self.movePoint = None
@@ -35,12 +36,12 @@ class AstroFrame:
         frames = []
         info = 'LIGHT'
         if frameId == AstroFrame.FRAME_DARK:
-                info = ' DARK'
+            info = 'DARK'
 
         cap = cv2.VideoCapture(stream)
         for n in range(num):
-            ret, image = cap.read()
-            if ret:
+            ok, image = cap.read()
+            if ok:
                 frames.append(AstroFrame(image, '%s captured at %s' % (info, time.ctime()), frameId))
 
         cap.release()
@@ -56,9 +57,9 @@ class AstroFrame:
         return 0.2126 * img[...,0] + 0.7152 * img[...,1] + 0.0722 * img[...,2]
 
     @staticmethod
-    def _gaussian(height, center_x, center_y, width, offset):
+    def gaussian(height, centerX, centerY, width, offset):
         def gauss(x,y):
-            return height*np.exp(-(((center_x-x)/width)**2+((center_y-y)/width)**2)) + offset
+            return height * np.exp(-(((centerX-x)/width)**2 + ((centerY-y)/width)**2)) + offset
         return gauss
 
     def fit(self):
@@ -66,11 +67,11 @@ class AstroFrame:
             x, y = np.unravel_index(self.data.argmax(), self.data.shape)
         else:
             x, y = self.point
-        height = self.data[int(round(x)),int(round(y))]
+        height = self.data[int(round(x)), int(round(y))]
         offset = np.mean(self.data)
         params = height, x, y, 5., offset
 
-        errorfunction = lambda p: np.ravel(AstroFrame._gaussian(*p)(*np.indices(self.data.shape)) - self.data)
+        errorfunction = lambda p: np.ravel(AstroFrame.gaussian(*p)(*np.indices(self.data.shape)) - self.data)
         p, success = leastsq(errorfunction, params)
         self.point = (p[1], p[2])
 
@@ -81,7 +82,7 @@ class AstroFrame:
         return self.frameId == AstroFrame.FRAME_LIGHT
 
     def pipeline(self):
-        self.image = self.original_image.copy()
+        self.image = self.originalImage.copy()
 
         if self.dark is not None:
             img = np.maximum(0, self.image.astype(np.float64) - self.dark.image.astype(np.float64))
@@ -153,7 +154,13 @@ def hasFrames(func):
 
 def onlyLightFrame(func):
     def inner(self, *args, **kwargs):
-        if self.frames[self.curr_frame].isLightFrame():
+        if self.frames[self.currFrame].isLightFrame():
+            func(self, *args, **kwargs)
+    return inner
+
+def notLive(func):
+    def inner(self, *args, **kwargs):
+        if not self.itemLive.IsChecked():
             func(self, *args, **kwargs)
     return inner
 
@@ -177,7 +184,7 @@ class AstroPhoto(wx.Frame):
     def __init__(self, *args, **kwargs):
         wx.Frame.__init__(self, *args, **kwargs)
         self.frames = []
-        self.curr_frame = -1
+        self.currFrame = -1
         self.source = 0
 
         self.initUI()
@@ -186,54 +193,56 @@ class AstroPhoto(wx.Frame):
         menubar = wx.MenuBar()
 
         camMenu = wx.Menu()
-        item_cam = wx.MenuItem(camMenu, wx.ID_ANY, '&Toggle stream\tCtrl+C')
-        item_light = wx.MenuItem(camMenu, wx.ID_NEW, 'Capture &light(s)\tCtrl+N')
-        item_dark = wx.MenuItem(camMenu, wx.ID_ANY, 'Capture &dark(s)\tCtrl+D')
-        camMenu.Append(item_cam)
+        itemCam = wx.MenuItem(camMenu, wx.ID_ANY, '&Toggle source')
+        itemLight = wx.MenuItem(camMenu, wx.ID_NEW, 'Capture &light(s)\tCtrl+N')
+        itemDark = wx.MenuItem(camMenu, wx.ID_ANY, 'Capture &dark(s)\tCtrl+D')
+        camMenu.Append(itemCam)
+        self.itemLive = camMenu.AppendCheckItem(0, '&Live stream\tCtrl+L')
         camMenu.AppendSeparator()
-        camMenu.Append(item_light)
-        camMenu.Append(item_dark)
-        self.menuSeries = camMenu.AppendCheckItem(0, '&Series')
+        camMenu.Append(itemLight)
+        camMenu.Append(itemDark)
+        self.itemSeries = camMenu.AppendCheckItem(1, '&Series')
         menubar.Append(camMenu, '&Camera')
 
         frameMenu = wx.Menu()
-        item_save = wx.MenuItem(frameMenu, wx.ID_SAVE, '&Save\tCtrl+S')
-        item_close = wx.MenuItem(frameMenu, wx.ID_CLOSE, '&Remove\tCtrl+W')
-        item_prev = wx.MenuItem(frameMenu, wx.ID_BACKWARD, '&Previous\tCtrl+LEFT')
-        item_next = wx.MenuItem(frameMenu, wx.ID_FORWARD, '&Next\tCtrl+RIGHT')
-        item_fit = wx.MenuItem(frameMenu, wx.ID_ANY, '&Fit\tCtrl+Shift+F')
-        frameMenu.Append(item_save)
-        frameMenu.Append(item_close)
+        itemSave = wx.MenuItem(frameMenu, wx.ID_SAVE, '&Save\tCtrl+S')
+        itemClose = wx.MenuItem(frameMenu, wx.ID_CLOSE, '&Remove\tCtrl+W')
+        itemPrev = wx.MenuItem(frameMenu, wx.ID_BACKWARD, '&Previous\tCtrl+LEFT')
+        itemNext = wx.MenuItem(frameMenu, wx.ID_FORWARD, '&Next\tCtrl+RIGHT')
+        itemFit = wx.MenuItem(frameMenu, wx.ID_ANY, '&Fit\tCtrl+Shift+F')
+        frameMenu.Append(itemSave)
+        frameMenu.Append(itemClose)
         frameMenu.AppendSeparator()
-        frameMenu.Append(item_prev)
-        frameMenu.Append(item_next)
+        frameMenu.Append(itemPrev)
+        frameMenu.Append(itemNext)
         frameMenu.AppendSeparator()
-        frameMenu.Append(item_fit)
+        frameMenu.Append(itemFit)
         menubar.Append(frameMenu, '&Frame')
 
         postMenu = wx.Menu()
-        item_sub = wx.MenuItem(postMenu, wx.ID_ANY, 'Subtract master &dark\tCtrl+K')
-        item_fit_all = wx.MenuItem(postMenu, wx.ID_ANY, '&Fit\tCtrl+F')
-        item_align = wx.MenuItem(postMenu, wx.ID_ANY, '&Align\tCtrl+A')
-        item_sum = wx.MenuItem(postMenu, wx.ID_ANY, '&Sum\tCtrl+T')
-        postMenu.Append(item_sub)
-        postMenu.Append(item_fit_all)
-        postMenu.Append(item_align)
-        postMenu.Append(item_sum)
+        itemSub = wx.MenuItem(postMenu, wx.ID_ANY, 'Subtract master &dark\tCtrl+K')
+        itemFitAll = wx.MenuItem(postMenu, wx.ID_ANY, '&Fit\tCtrl+F')
+        itemAlign = wx.MenuItem(postMenu, wx.ID_ANY, '&Align\tCtrl+A')
+        itemSum = wx.MenuItem(postMenu, wx.ID_ANY, '&Sum\tCtrl+T')
+        postMenu.Append(itemSub)
+        postMenu.Append(itemFitAll)
+        postMenu.Append(itemAlign)
+        postMenu.Append(itemSum)
         menubar.Append(postMenu, '&All frames')
 
-        self.Bind(wx.EVT_MENU, self.onSourceSelect, item_cam)
-        self.Bind(wx.EVT_MENU, self.onSave, item_save)
-        self.Bind(wx.EVT_MENU, self.onClose, item_close)
-        self.Bind(wx.EVT_MENU, self.onCaptureLight, item_light)
-        self.Bind(wx.EVT_MENU, self.onCaptureDark, item_dark)
-        self.Bind(wx.EVT_MENU, self.onPrev, item_prev)
-        self.Bind(wx.EVT_MENU, self.onNext, item_next)
-        self.Bind(wx.EVT_MENU, self.onSubtractDarks, item_sub)
-        self.Bind(wx.EVT_MENU, self.onFit, item_fit)
-        self.Bind(wx.EVT_MENU, self.onFitAll, item_fit_all)
-        self.Bind(wx.EVT_MENU, self.onAlign, item_align)
-        self.Bind(wx.EVT_MENU, self.onSum, item_sum)
+        self.Bind(wx.EVT_MENU, self.onSourceSelect, itemCam)
+        self.Bind(wx.EVT_MENU, self.onSave, itemSave)
+        self.Bind(wx.EVT_MENU, self.onClose, itemClose)
+        self.Bind(wx.EVT_MENU, self.onCaptureLight, itemLight)
+        self.Bind(wx.EVT_MENU, self.onCaptureDark, itemDark)
+        self.Bind(wx.EVT_MENU, self.onPrev, itemPrev)
+        self.Bind(wx.EVT_MENU, self.onNext, itemNext)
+        self.Bind(wx.EVT_MENU, self.onSubtractDarks, itemSub)
+        self.Bind(wx.EVT_MENU, self.onFit, itemFit)
+        self.Bind(wx.EVT_MENU, self.onFitAll, itemFitAll)
+        self.Bind(wx.EVT_MENU, self.onAlign, itemAlign)
+        self.Bind(wx.EVT_MENU, self.onSum, itemSum)
+        self.Bind(wx.EVT_MENU, self.onLive, self.itemLive)
 
         self.SetMenuBar(menubar)
 
@@ -278,10 +287,10 @@ class AstroPhoto(wx.Frame):
 
     def drawFrame(self):
         if len(self.frames) > 0:
-            self.framepanel.draw(self.frames[self.curr_frame])
-            self.status.SetStatusText('%i' % self.curr_frame, 0)
-            self.status.SetStatusText(self.frames[self.curr_frame].description, 1)
-            p = self.frames[self.curr_frame].point
+            self.framepanel.draw(self.frames[self.currFrame])
+            self.status.SetStatusText('%i' % self.currFrame, 0)
+            self.status.SetStatusText(self.frames[self.currFrame].description, 1)
+            p = self.frames[self.currFrame].point
             if p is not None:
                 self.status.SetStatusText('%3.2f; %3.2f' % p, 2)
         else:
@@ -291,34 +300,59 @@ class AstroPhoto(wx.Frame):
             self.status.SetStatusText('', 2)
         self.scroll.Layout()
 
+    @drawAfter
+    def livePreview(self):
+        self.status.SetStatusText('', 0)
+        self.status.SetStatusText('LIVE camera %i' % self.source, 1)
+        self.status.SetStatusText('', 2)
+
+        cap = cv2.VideoCapture(self.source)
+        ok, image = cap.read()
+        if ok:
+            self.framepanel.draw(AstroFrame(image, 'LIVE', AstroFrame.FRAME_LIVE))
+            self.scroll.Layout()
+
+        while ok and self.itemLive.IsChecked():
+            ok, image = cap.read()
+            if ok:
+                self.framepanel.draw(AstroFrame(image, 'LIVE', AstroFrame.FRAME_LIVE))
+            cv2.waitKey(50)
+            wx.GetApp().Yield()
+        cap.release()
+
+    @notLive
     @hasFrames
     @onlyLightFrame
     @drawAfter
     def onFrameClick(self, e):
-        self.frames[self.curr_frame].setPoint(self.frames[self.curr_frame].height - e.y, e.x)
+        self.frames[self.currFrame].setPoint(self.frames[self.currFrame].height - e.y, e.x)
 
+    @notLive
     @hasFrames
     @drawAfter
     def onPrev(self, e):
-        self.curr_frame -= 1
-        if self.curr_frame < 0:
-            self.curr_frame = len(self.frames) - 1
+        self.currFrame -= 1
+        if self.currFrame < 0:
+            self.currFrame = len(self.frames) - 1
 
+    @notLive
     @hasFrames
     @drawAfter
     def onNext(self, e):
-        self.curr_frame += 1
-        if self.curr_frame >= len(self.frames):
-            self.curr_frame = 0
+        self.currFrame += 1
+        if self.currFrame >= len(self.frames):
+            self.currFrame = 0
 
+    @notLive
     @hasFrames
     @onlyLightFrame
     @hourglass
     @drawAfter
     def onFit(self, e):
         self.statusInfo('Fitting light frame...')
-        self.frames[self.curr_frame].fit()
+        self.frames[self.currFrame].fit()
 
+    @notLive
     @hasFrames
     @hourglass
     @drawAfter
@@ -326,9 +360,10 @@ class AstroPhoto(wx.Frame):
         for n in self.framesById(AstroFrame.FRAME_LIGHT):
             self.statusInfo('Fitting light frames...')
             self.frames[n].fit()
-            self.curr_frame = n
+            self.currFrame = n
             self.drawFrame()
 
+    @notLive
     @hasFrames
     @hourglass
     @drawAfter
@@ -337,10 +372,12 @@ class AstroPhoto(wx.Frame):
         for n in ns:
             self.statusInfo('Aligning light frames...')
             self.frames[n].move(self.frames[ns[0]].point)
-            self.curr_frame = n
+            self.currFrame = n
             self.drawFrame()
 
+    @notLive
     @hasFrames
+    @onlyLightFrame
     def onSave(self, e):
         saveFileDialog = wx.FileDialog(self, "Save image file", "", "", \
                     "JPEG file (*.jpg)|*.jpg|PNG file (*.png)|*.png", \
@@ -354,24 +391,27 @@ class AstroPhoto(wx.Frame):
         ext = extensions[saveFileDialog.GetFilterIndex()]
         if filename.lower()[-4:] != ext:
             filename += ext
-        self.frames[self.curr_frame].save(filename)
+        self.frames[self.currFrame].save(filename)
 
+    @notLive
     @hasFrames
     @drawAfter
     def onClose(self, e):
-        self.frames.pop(self.curr_frame)
-        self.curr_frame = min(len(self.frames) - 1, self.curr_frame)
+        self.frames.pop(self.currFrame)
+        self.currFrame = min(len(self.frames) - 1, self.currFrame)
         if len(self.frames) == 0:
-            self.curr_frame = -1
+            self.currFrame = -1
 
+    @notLive
     @hourglass
     @drawAfter
     def onSum(self, e):
         ns = self.framesById(AstroFrame.FRAME_LIGHT)
         if len(ns) > 0:
-            self.curr_frame = len(self.frames)
+            self.currFrame = len(self.frames)
             self.frames.append(self.addFrames(ns))
 
+    @notLive
     @hourglass
     @drawAfter
     def onSubtractDarks(self, e):
@@ -382,35 +422,42 @@ class AstroPhoto(wx.Frame):
             for n in self.framesById(AstroFrame.FRAME_LIGHT):
                 self.statusInfo('Subtracting master dark...')
                 self.frames[n].subtract(dark)
-                self.curr_frame = n
+                self.currFrame = n
                 self.drawFrame()
 
+    @notLive
     def onSourceSelect(self, e):
         self.source = 1 - self.source
 
+    @notLive
     @hourglass
     @drawAfter
     def onCaptureLight(self, e):
         self.statusInfo('Capturing light frame(s)...')
         num = 1
-        if self.menuSeries.IsChecked():
-            num = 10
+        if self.itemSeries.IsChecked():
+            num = 25
         frames = AstroFrame.capture(self.source, AstroFrame.FRAME_LIGHT, num)
         for frame in frames:
-            self.curr_frame = len(self.frames)
+            self.currFrame = len(self.frames)
             self.frames.append(frame)
 
+    @notLive
     @hourglass
     @drawAfter
     def onCaptureDark(self, e):
         self.statusInfo('Capturing dark frame(s)...')
         num = 1
-        if self.menuSeries.IsChecked():
+        if self.itemSeries.IsChecked():
             num = 10
         frames = AstroFrame.capture(self.source, AstroFrame.FRAME_DARK, num)
         for frame in frames:
-            self.curr_frame = len(self.frames)
+            self.currFrame = len(self.frames)
             self.frames.append(frame)
+
+    def onLive(self, e):
+        if self.itemLive.IsChecked():
+            self.livePreview()
 
 def main():
     ex = wx.App()

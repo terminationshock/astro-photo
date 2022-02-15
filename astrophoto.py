@@ -24,7 +24,7 @@ class AstroFrame:
         self.frameId = frameId
 
         self.data = AstroFrame.brightness(self.originalImage)
-        self.height, self.width = self.data.shape
+        self.width, self.height = self.data.shape
         self.image = self.originalImage.copy()
         self.point = None
         self.offset = (0,0)
@@ -54,11 +54,11 @@ class AstroFrame:
 
     @staticmethod
     def brightness(img):
-        return 0.2126 * img[...,0] + 0.7152 * img[...,1] + 0.0722 * img[...,2]
+        return (0.2126 * img[...,0] + 0.7152 * img[...,1] + 0.0722 * img[...,2]).transpose()
 
     @staticmethod
     def gaussian(height, centerX, centerY, width, offset):
-        def gauss(x,y):
+        def gauss(x, y):
             return height * np.exp(-(((centerX-x)/width)**2 + ((centerY-y)/width)**2)) + offset
         return gauss
 
@@ -67,13 +67,17 @@ class AstroFrame:
             x, y = np.unravel_index(self.data.argmax(), self.data.shape)
         else:
             x, y = self.point
-        height = self.data[int(round(x)), int(round(y))]
-        offset = np.mean(self.data)
-        params = height, x, y, 5., offset
 
-        errorfunction = lambda p: np.ravel(AstroFrame.gaussian(*p)(*np.indices(self.data.shape)) - self.data)
-        p, success = leastsq(errorfunction, params)
-        self.point = (p[1], p[2])
+        height = self.data[int(round(x)), int(round(y))]
+        offset = np.median(self.data)
+        params = height, float(x), float(y), 20., offset
+
+        errorFunction = lambda p: np.ravel(AstroFrame.gaussian(*p)(*np.indices(self.data.shape)) - self.data)
+        p, _ = leastsq(errorFunction, params)
+
+        x, y = p[1], p[2]
+        if 0 < x < self.width and 0 < y < self.height:
+            self.point = (x, y)
 
     def setPoint(self, x, y):
         self.point = float(x) - self.offset[0], float(y) - self.offset[1]
@@ -93,7 +97,7 @@ class AstroFrame:
                 self.fit()
             self.offset = (self.movePoint[0] - self.point[0], self.movePoint[1] - self.point[1])
             for i in range(3):
-                self.image[...,i] = shift(self.image[...,i], self.offset)
+                self.image[...,i] = shift(self.image[...,i], self.offset[::-1])
 
     def move(self, point):
         self.movePoint = point
@@ -105,7 +109,7 @@ class AstroFrame:
 
     def getDrawPoint(self):
         if self.point is None:
-            return None
+            return None, None
         return self.point[0] + self.offset[0], self.point[1] + self.offset[1]
 
 class FramePanel(wx.Panel):
@@ -130,9 +134,9 @@ class FramePanel(wx.Panel):
         self.clear(draw=False)
         self.axes.imshow(frame.image)
 
-        point = frame.getDrawPoint()
-        if point is not None:
-            self.axes.plot([point[1]], [point[0]], color='blue', marker='+', markersize=20)
+        x, y = frame.getDrawPoint()
+        if x is not None and y is not None:
+            self.axes.plot([x], [y], color='blue', marker='+', markersize=20)
 
         self.figure.set_size_inches((frame.width / self.figure.dpi, frame.height / self.figure.dpi))
         self.canvas.SetMinSize((frame.width, frame.height))
@@ -325,7 +329,7 @@ class AstroPhoto(wx.Frame):
     @onlyLightFrame
     @drawAfter
     def onFrameClick(self, e):
-        self.frames[self.currFrame].setPoint(self.frames[self.currFrame].height - e.y, e.x)
+        self.frames[self.currFrame].setPoint(e.x, self.frames[self.currFrame].height - e.y)
 
     @notLive
     @hasFrames

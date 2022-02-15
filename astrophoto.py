@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import wx
 import cv2
 import time
+import pickle
 
 class AstroFrame:
     FRAME_LIGHT = 0
@@ -174,6 +175,12 @@ def drawAfter(func):
         self.drawFrame()
     return inner
 
+def backupAfter(func):
+    def inner(self, *args, **kwargs):
+        func(self, *args, **kwargs)
+        self.saveBackup()
+    return inner
+
 def hourglass(func):
     def inner(self, *args, **kwargs):
         self.Enable(False)
@@ -187,6 +194,7 @@ def hourglass(func):
 class AstroPhoto(wx.Frame):
     def __init__(self, *args, **kwargs):
         wx.Frame.__init__(self, *args, **kwargs)
+
         self.frames = []
         self.currFrame = -1
         self.source = 0
@@ -228,25 +236,29 @@ class AstroPhoto(wx.Frame):
         itemFitAll = wx.MenuItem(postMenu, wx.ID_ANY, '&Fit\tCtrl+F')
         itemAlign = wx.MenuItem(postMenu, wx.ID_ANY, '&Align\tCtrl+A')
         itemSum = wx.MenuItem(postMenu, wx.ID_ANY, '&Sum\tCtrl+T')
+        itemLoad = wx.MenuItem(postMenu, wx.ID_OPEN, '&Load backup\tCtrl+O')
         postMenu.Append(itemSub)
         postMenu.Append(itemFitAll)
         postMenu.Append(itemAlign)
         postMenu.Append(itemSum)
+        postMenu.AppendSeparator()
+        postMenu.Append(itemLoad)
         menubar.Append(postMenu, '&All frames')
 
         self.Bind(wx.EVT_MENU, self.onSourceSelect, itemCam)
-        self.Bind(wx.EVT_MENU, self.onSave, itemSave)
-        self.Bind(wx.EVT_MENU, self.onClose, itemClose)
         self.Bind(wx.EVT_MENU, self.onCaptureLight, itemLight)
         self.Bind(wx.EVT_MENU, self.onCaptureDark, itemDark)
+        self.Bind(wx.EVT_MENU, self.onLive, self.itemLive)
+        self.Bind(wx.EVT_MENU, self.onSave, itemSave)
+        self.Bind(wx.EVT_MENU, self.onClose, itemClose)
         self.Bind(wx.EVT_MENU, self.onPrev, itemPrev)
         self.Bind(wx.EVT_MENU, self.onNext, itemNext)
-        self.Bind(wx.EVT_MENU, self.onSubtractDarks, itemSub)
         self.Bind(wx.EVT_MENU, self.onFit, itemFit)
+        self.Bind(wx.EVT_MENU, self.onSubtractDarks, itemSub)
         self.Bind(wx.EVT_MENU, self.onFitAll, itemFitAll)
         self.Bind(wx.EVT_MENU, self.onAlign, itemAlign)
         self.Bind(wx.EVT_MENU, self.onSum, itemSum)
-        self.Bind(wx.EVT_MENU, self.onLive, self.itemLive)
+        self.Bind(wx.EVT_MENU, self.onLoadBackup, itemLoad)
 
         self.SetMenuBar(menubar)
 
@@ -324,10 +336,22 @@ class AstroPhoto(wx.Frame):
             wx.GetApp().Yield()
         cap.release()
 
+    def saveBackup(self):
+        with open('backup.dat', 'wb') as f:
+            pickle.dump(self.frames, f)
+
+    @notLive
+    @drawAfter
+    def onLoadBackup(self, e):
+        with open('backup.dat', 'rb') as f:
+            self.frames = pickle.load(f)
+        self.currFrame = 0
+
     @notLive
     @hasFrames
     @onlyLightFrame
     @drawAfter
+    @backupAfter
     def onFrameClick(self, e):
         self.frames[self.currFrame].setPoint(e.x, self.frames[self.currFrame].height - e.y)
 
@@ -352,6 +376,7 @@ class AstroPhoto(wx.Frame):
     @onlyLightFrame
     @hourglass
     @drawAfter
+    @backupAfter
     def onFit(self, e):
         self.statusInfo('Fitting light frame...')
         self.frames[self.currFrame].fit()
@@ -360,6 +385,7 @@ class AstroPhoto(wx.Frame):
     @hasFrames
     @hourglass
     @drawAfter
+    @backupAfter
     def onFitAll(self, e):
         for n in self.framesById(AstroFrame.FRAME_LIGHT):
             self.statusInfo('Fitting light frames...')
@@ -371,6 +397,7 @@ class AstroPhoto(wx.Frame):
     @hasFrames
     @hourglass
     @drawAfter
+    @backupAfter
     def onAlign(self, e):
         ns = self.framesById(AstroFrame.FRAME_LIGHT)
         for n in ns:
@@ -400,6 +427,7 @@ class AstroPhoto(wx.Frame):
     @notLive
     @hasFrames
     @drawAfter
+    @backupAfter
     def onClose(self, e):
         self.frames.pop(self.currFrame)
         self.currFrame = min(len(self.frames) - 1, self.currFrame)
@@ -409,6 +437,7 @@ class AstroPhoto(wx.Frame):
     @notLive
     @hourglass
     @drawAfter
+    @backupAfter
     def onSum(self, e):
         ns = self.framesById(AstroFrame.FRAME_LIGHT)
         if len(ns) > 0:
@@ -418,6 +447,7 @@ class AstroPhoto(wx.Frame):
     @notLive
     @hourglass
     @drawAfter
+    @backupAfter
     def onSubtractDarks(self, e):
         ns = self.framesById(AstroFrame.FRAME_DARK)
         if len(ns) > 0:
@@ -436,6 +466,7 @@ class AstroPhoto(wx.Frame):
     @notLive
     @hourglass
     @drawAfter
+    @backupAfter
     def onCaptureLight(self, e):
         self.statusInfo('Capturing light frame(s)...')
         num = 1
@@ -449,6 +480,7 @@ class AstroPhoto(wx.Frame):
     @notLive
     @hourglass
     @drawAfter
+    @backupAfter
     def onCaptureDark(self, e):
         self.statusInfo('Capturing dark frame(s)...')
         num = 1
@@ -464,7 +496,7 @@ class AstroPhoto(wx.Frame):
             self.livePreview()
 
 def main():
-    ex = wx.App()
+    ex = wx.App(True, filename='out.log')
     AstroPhoto(None, style=wx.MAXIMIZE | wx.DEFAULT_FRAME_STYLE)
     ex.MainLoop()
 

@@ -8,6 +8,7 @@ matplotlib.use('WXAgg')
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_wxagg import FigureCanvasWxAgg as FigureCanvas
 import matplotlib.pyplot as plt
+import sys
 import wx
 import cv2
 import time
@@ -179,11 +180,11 @@ def hourglass(func):
 
 class AstroPhoto(wx.Frame):
     def __init__(self, *args, **kwargs):
+        self.source = kwargs.pop('source')
         wx.Frame.__init__(self, *args, **kwargs)
 
         self.frames = []
         self.currFrame = -1
-        self.source = 0
 
         self.initUI()
 
@@ -191,10 +192,8 @@ class AstroPhoto(wx.Frame):
         menubar = wx.MenuBar()
 
         camMenu = wx.Menu()
-        itemCam = wx.MenuItem(camMenu, wx.ID_ANY, '&Toggle source')
         itemLight = wx.MenuItem(camMenu, wx.ID_NEW, 'Capture &light(s)\tCtrl+N')
         itemDark = wx.MenuItem(camMenu, wx.ID_ANY, 'Capture &dark(s)\tCtrl+D')
-        camMenu.Append(itemCam)
         self.itemLive = camMenu.AppendCheckItem(0, '&Live stream\tCtrl+L')
         camMenu.AppendSeparator()
         camMenu.Append(itemLight)
@@ -231,7 +230,6 @@ class AstroPhoto(wx.Frame):
         postMenu.Append(itemLoad)
         menubar.Append(postMenu, '&All frames')
 
-        self.Bind(wx.EVT_MENU, self.onSourceSelect, itemCam)
         self.Bind(wx.EVT_MENU, self.onCaptureLight, itemLight)
         self.Bind(wx.EVT_MENU, self.onCaptureDark, itemDark)
         self.Bind(wx.EVT_MENU, self.onLive, self.itemLive)
@@ -446,10 +444,6 @@ class AstroPhoto(wx.Frame):
                 self.drawFrame()
 
     @notLive
-    def onSourceSelect(self, e):
-        self.source = 1 - self.source
-
-    @notLive
     @hourglass
     @drawAfter
     @backupAfter
@@ -483,7 +477,10 @@ class AstroPhoto(wx.Frame):
 
 def main():
     ex = wx.App(True, filename='out.log')
-    AstroPhoto(None, style=wx.MAXIMIZE | wx.DEFAULT_FRAME_STYLE)
+    source = 0
+    if len(sys.argv) > 1:
+        source = int(sys.argv[1])
+    AstroPhoto(None, source=source, style=wx.MAXIMIZE | wx.DEFAULT_FRAME_STYLE)
     ex.MainLoop()
 
 if __name__ == '__main__':

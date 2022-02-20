@@ -48,6 +48,10 @@ contains
         i0 = int(x)
         j0 = int(y)
 
+        if (i0 == 1 .or. i0 == nx .or. j0 == 1 .or. j0 == ny) then
+            return
+        end if
+
         limit = 200.d0
 
         allocate(cluster(nx,ny))

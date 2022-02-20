@@ -1,8 +1,8 @@
 #!/usr/bin/python3
 
 import numpy as np
-from scipy.optimize import leastsq
 from scipy.ndimage.interpolation import shift
+from astrofit import astrofit
 import matplotlib
 matplotlib.use('WXAgg')
 from matplotlib.figure import Figure
@@ -57,28 +57,13 @@ class AstroFrame:
     def brightness(img):
         return (0.2126 * img[...,0] + 0.7152 * img[...,1] + 0.0722 * img[...,2]).transpose()
 
-    @staticmethod
-    def gaussian(height, centerX, centerY, width, offset):
-        def gauss(x, y):
-            return height * np.exp(-(((centerX-x)/width)**2 + ((centerY-y)/width)**2)) + offset
-        return gauss
-
     def fit(self):
-        if self.point is None:
-            x, y = np.unravel_index(self.data.argmax(), self.data.shape)
-        else:
+        x, y = -1., -1.
+        if self.point is not None:
             x, y = self.point
 
-        height = self.data[int(round(x)), int(round(y))]
-        offset = np.median(self.data)
-        params = height, float(x), float(y), 20., offset
-
-        errorFunction = lambda p: np.ravel(AstroFrame.gaussian(*p)(*np.indices(self.data.shape)) - self.data)
-        p, _ = leastsq(errorFunction, params)
-
-        x, y = p[1], p[2]
-        if 0 < x < self.width and 0 < y < self.height:
-            self.point = (x, y)
+        x, y = astrofit.fit(self.data, x, y)
+        self.point = (x, y)
 
     def setPoint(self, x, y):
         self.point = float(x) - self.offset[0], float(y) - self.offset[1]

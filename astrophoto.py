@@ -194,7 +194,7 @@ class AstroPhoto(wx.Frame):
         camMenu = wx.Menu()
         itemLight = wx.MenuItem(camMenu, wx.ID_NEW, 'Capture &light(s)\tCtrl+N')
         itemDark = wx.MenuItem(camMenu, wx.ID_ANY, 'Capture &dark(s)\tCtrl+D')
-        self.itemLive = camMenu.AppendCheckItem(0, '&Live stream\tCtrl+L')
+        self.itemLive = camMenu.AppendCheckItem(0, 'L&ive stream\tCtrl+L')
         camMenu.AppendSeparator()
         camMenu.Append(itemLight)
         camMenu.Append(itemDark)

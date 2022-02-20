@@ -79,15 +79,16 @@ class AstroFrame:
             self.image = img.astype(np.uint8)
 
         if self.movePoint is not None:
-            if self.point is None:
-                self.fit()
             self.offset = (self.movePoint[0] - self.point[0], self.movePoint[1] - self.point[1])
             for i in range(3):
                 self.image[...,i] = shift(self.image[...,i], self.offset[::-1])
 
     def move(self, point):
-        self.movePoint = point
-        self.pipeline()
+        if point is not None:
+            if self.point is None:
+                self.fit()
+            self.movePoint = point
+            self.pipeline()
 
     def subtract(self, dark):
         self.dark = dark

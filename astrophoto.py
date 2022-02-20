@@ -1,16 +1,16 @@
 #!/usr/bin/python3
 
-import numpy as np
-from scipy.ndimage.interpolation import shift
-from astrofit import astrofit
+import sys
+import wx
 import matplotlib
 matplotlib.use('WXAgg')
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_wxagg import FigureCanvasWxAgg as FigureCanvas
-import matplotlib.pyplot as plt
-import sys
-import wx
+from matplotlib.pyplot import imsave
 import cv2
+import numpy as np
+from scipy.ndimage.interpolation import shift
+from astrofit import astrofit
 import time
 import pickle
 
@@ -52,7 +52,7 @@ class AstroFrame:
     def save(self, filename=None):
         if filename is None:
             filename = '%i.png' % (int(time.time()))
-        plt.imsave(filename, self.image)
+        imsave(filename, self.image)
 
     @staticmethod
     def brightness(img):
@@ -395,9 +395,9 @@ class AstroPhoto(wx.Frame):
     @onlyLightFrame
     def onSave(self, e):
         saveFileDialog = wx.FileDialog(self, "Save image file", "", "", \
-                    "JPEG file (*.jpg)|*.jpg|PNG file (*.png)|*.png", \
+                    "PNG file (*.png)|*.png|JPEG file (*.jpg)|*.jpg", \
                     wx.FD_SAVE | wx.FD_OVERWRITE_PROMPT)
-        extensions = ['.jpg', '.png']
+        extensions = ['.png', '.jpg']
 
         if saveFileDialog.ShowModal() == wx.ID_CANCEL:
             return

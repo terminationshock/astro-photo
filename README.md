@@ -27,15 +27,15 @@ Click _Fit_ to find the brightest pixel in the current frame and compute the cen
 
 ### All frames menu
 
-If you hit the _Subtract master dark_ item, a master dark will be created by adding all previously captured dark frames. Then, this master dark will be subtracted from all light images.
+If you hit the _Subtract master dark_ menu item, a master dark is created by adding all previously captured dark frames. Then, this master dark is subtracted from all light images.
 
-The _Fit_ item will run the fitting algorithm on all frames (see above).
+With the _Fit_ entry, you can apply the fitting procedure to all frames (see above).
 
 You can _Align_ all frames so that the fitted points will be on top of each other.
 
-_Sum_ will then add all aligned frames.
+The final stacked image is produced with the _Sum_ menu item.
 
-The program stores backups after each step, which you can restore using the _Load backup_ menu item.
+The program stores backups after each step, which you can restore if you click on _Load backup_.
 
 ## Dependencies
 

@@ -92,6 +92,9 @@ class AstroFrame:
     def isLightFrame(self):
         return self.frameId == AstroFrame.FRAME_LIGHT
 
+    def isNotDarkFrame(self):
+        return self.frameId != AstroFrame.FRAME_DARK
+
     def pipeline(self):
         self.image = self.originalImage.copy()
 
@@ -162,6 +165,12 @@ def hasFrames(func):
 def onlyLightFrame(func):
     def inner(self, *args, **kwargs):
         if self.frames[self.currFrame].isLightFrame():
+            func(self, *args, **kwargs)
+    return inner
+
+def notDarkFrame(func):
+    def inner(self, *args, **kwargs):
+        if self.frames[self.currFrame].isNotDarkFrame():
             func(self, *args, **kwargs)
     return inner
 
@@ -412,7 +421,7 @@ class AstroPhoto(wx.Frame):
 
     @notLive
     @hasFrames
-    @onlyLightFrame
+    @notDarkFrame
     def onSave(self, e):
         saveFileDialog = wx.FileDialog(self, "Save image file", "", "", \
                     "PNG file (*.png)|*.png|JPEG file (*.jpg)|*.jpg", \

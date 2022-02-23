@@ -122,7 +122,8 @@ class FramePanel(wx.Panel):
     def __init__(self, parent):
         wx.Panel.__init__(self, parent)
         self.figure = Figure()
-        self.axes = self.figure.add_axes([0,0,1,1], facecolor='black')
+        self.figure.set_facecolor('black')
+        self.axes = self.figure.add_axes([0,0,1,1])
         self.canvas = FigureCanvas(self, -1, self.figure)
         self.sizer = wx.BoxSizer(wx.VERTICAL)
         self.sizer.Add(self.canvas, 1, wx.EXPAND)
@@ -143,6 +144,10 @@ class FramePanel(wx.Panel):
         x, y = frame.getPoint()
         if x is not None and y is not None:
             self.axes.plot([x], [y], color='blue', marker='+', markersize=20)
+
+        self.axes.plot([0,frame.width], [frame.height,frame.height], color='grey', linewidth=2, linestyle='-')
+        self.axes.plot([frame.width,frame.width], [0,frame.height], color='grey', linewidth=2, linestyle='-')
+        self.axes.margins(0, 0)
 
         self.figure.set_size_inches((frame.width / self.figure.dpi, frame.height / self.figure.dpi))
         self.canvas.SetMinSize((frame.width, frame.height))
@@ -272,6 +277,7 @@ class AstroPhoto(wx.Frame):
 
         self.SetSize((800, 600))
         self.SetTitle('AstroPhoto')
+        self.SetBackgroundColour('black')
         self.Centre()
 
         self.scroll = wx.ScrolledWindow(self)
@@ -281,6 +287,8 @@ class AstroPhoto(wx.Frame):
         self.status = wx.StatusBar(self)
         self.status.SetFieldsCount(3)
         self.status.SetStatusWidths([50, -1, 150])
+        self.status.SetBackgroundColour('black')
+        self.status.SetForegroundColour('white')
         self.SetStatusBar(self.status)
 
         vbox = wx.BoxSizer(wx.VERTICAL)

@@ -84,6 +84,11 @@ class AstroFrame:
     def setPoint(self, x, y):
         self.point = float(x) - self.offset[0], float(y) - self.offset[1]
 
+    def getPoint(self):
+        if self.point is None:
+            return None, None
+        return self.point[0] + self.offset[0], self.point[1] + self.offset[1]
+
     def isLightFrame(self):
         return self.frameId == AstroFrame.FRAME_LIGHT
 
@@ -110,11 +115,6 @@ class AstroFrame:
         self.dark = dark
         self.pipeline()
 
-    def getDrawPoint(self):
-        if self.point is None:
-            return None, None
-        return self.point[0] + self.offset[0], self.point[1] + self.offset[1]
-
 class FramePanel(wx.Panel):
     def __init__(self, parent):
         wx.Panel.__init__(self, parent)
@@ -137,7 +137,7 @@ class FramePanel(wx.Panel):
         self.clear(draw=False)
         self.axes.imshow(frame.image)
 
-        x, y = frame.getDrawPoint()
+        x, y = frame.getPoint()
         if x is not None and y is not None:
             self.axes.plot([x], [y], color='blue', marker='+', markersize=20)
 
@@ -300,14 +300,15 @@ class AstroPhoto(wx.Frame):
         self.status.SetStatusText('', 2)
         wx.GetApp().Yield()
 
-    def drawFrame(self):
+    def drawFrame(self, updateStatus=True):
         if len(self.frames) > 0:
             self.framepanel.draw(self.frames[self.currFrame])
-            self.status.SetStatusText('%i' % self.currFrame, 0)
-            self.status.SetStatusText(self.frames[self.currFrame].description, 1)
-            p = self.frames[self.currFrame].point
-            if p is not None:
-                self.status.SetStatusText('%3.2f; %3.2f' % p, 2)
+            if updateStatus:
+                self.status.SetStatusText('%i' % self.currFrame, 0)
+                self.status.SetStatusText(self.frames[self.currFrame].description, 1)
+                p = self.frames[self.currFrame].point
+                if p is not None:
+                    self.status.SetStatusText('%3.2f; %3.2f' % p, 2)
         else:
             self.framepanel.clear()
             self.status.SetStatusText('', 0)
@@ -386,11 +387,15 @@ class AstroPhoto(wx.Frame):
     @drawAfter
     @backupAfter
     def onFitAll(self, e):
+        previousPoint = None
         for n in self.framesById(AstroFrame.FRAME_LIGHT):
             self.statusInfo('Fitting light frames...')
+            if previousPoint is not None:
+                self.frames[n].setPoint(*previousPoint)
             self.frames[n].fit()
             self.currFrame = n
-            self.drawFrame()
+            self.drawFrame(False)
+            previousPoint = self.frames[n].getPoint()
 
     @notLive
     @hasFrames
@@ -401,9 +406,9 @@ class AstroPhoto(wx.Frame):
         ns = self.framesById(AstroFrame.FRAME_LIGHT)
         for n in ns:
             self.statusInfo('Aligning light frames...')
-            self.frames[n].move(self.frames[ns[0]].point)
+            self.frames[n].move(self.frames[ns[0]].getPoint())
             self.currFrame = n
-            self.drawFrame()
+            self.drawFrame(False)
 
     @notLive
     @hasFrames
@@ -456,7 +461,7 @@ class AstroPhoto(wx.Frame):
                 self.statusInfo('Subtracting master dark...')
                 self.frames[n].subtract(dark)
                 self.currFrame = n
-                self.drawFrame()
+                self.drawFrame(False)
 
     @notLive
     @hourglass

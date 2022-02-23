@@ -37,15 +37,25 @@ contains
         real(8), intent(in) :: x0, y0
         real(8), intent(out) :: x, y
 
-        integer(4) :: indices(2)
+        integer(4), parameter :: delta = 50
+        integer(4) :: indices(2), i0, j0, i1, j1, i2, j2
 
         if (x0 < 0 .or. y0 < 0) then
             indices = maxloc(pixels)
-            x = indices(1)
-            y = indices(2)
+            x = real(indices(1))
+            y = real(indices(2))
         else
-            x = x0 + 1.d0
-            y = y0 + 1.d0
+            i0 = int(x0) + 1
+            j0 = int(y0) + 1
+
+            i1 = max(1, i0 - delta)
+            j1 = max(1, j0 - delta)
+            i2 = min(size(pixels, dim=1), i0 + delta)
+            j2 = min(size(pixels, dim=2), j0 + delta)
+
+            indices = maxloc(pixels(i1:i2,j1:j2))
+            x = real(indices(1) + i1 - 1)
+            y = real(indices(2) + j1 - 1)
         end if
     end subroutine
 

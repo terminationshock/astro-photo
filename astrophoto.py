@@ -24,7 +24,7 @@ from matplotlib.backends.backend_wxagg import FigureCanvasWxAgg as FigureCanvas
 from matplotlib.pyplot import imsave
 import cv2
 import numpy as np
-from scipy.ndimage.interpolation import shift
+from scipy.ndimage.interpolation import affine_transform
 from astrofit import astrofit
 import time
 import pickle
@@ -43,9 +43,12 @@ class AstroFrame:
         self.data = AstroFrame.brightness(self.originalImage)
         self.width, self.height = self.data.shape
         self.image = self.originalImage.copy()
-        self.point = None
-        self.offset = (0,0)
-        self.movePoint = None
+        self.anchorPoint = None
+        self.rotatePoint = None
+        self.translateMatrix = np.identity(3, dtype=np.float64)
+        self.rotateMatrix = np.identity(3, dtype=np.float64)
+        self.matrix = np.identity(3, dtype=np.float64)
+        self.matrixInv = np.identity(3, dtype=np.float64)
         self.dark = None
 
     @staticmethod
@@ -75,19 +78,37 @@ class AstroFrame:
 
     def fit(self):
         x, y = -1., -1.
-        if self.point is not None:
-            x, y = self.point
+        if self.anchorPoint is not None:
+            x, y = self.anchorPoint
+        self.anchorPoint = astrofit.fit(self.data, x, y)
 
-        x, y = astrofit.fit(self.data, x, y)
-        self.point = (x, y)
+        if self.rotatePoint is not None:
+            self.rotatePoint = astrofit.fit(self.data, *self.rotatePoint)
 
-    def setPoint(self, x, y):
-        self.point = float(x) - self.offset[0], float(y) - self.offset[1]
+    def setAnchorPoint(self, x, y):
+        x, y, _ = np.matmul(self.matrixInv, np.array([x, y, 1], dtype=np.float64))
+        self.anchorPoint = x, y
 
-    def getPoint(self):
-        if self.point is None:
-            return None, None
-        return self.point[0] + self.offset[0], self.point[1] + self.offset[1]
+    def setRotatePoint(self, x, y):
+        x, y, _ = np.matmul(self.matrixInv, np.array([x, y, 1], dtype=np.float64))
+        self.rotatePoint = x, y
+
+    def getAnchorPoint(self):
+        if self.anchorPoint is None:
+            return None
+        x, y, _ = np.matmul(self.matrix, np.array([self.anchorPoint[0], self.anchorPoint[1], 1], dtype=np.float64))
+        return x, y
+
+    def getRotatePoint(self):
+        if self.rotatePoint is None:
+            return None
+        x, y, _ = np.matmul(self.matrix, np.array([self.rotatePoint[0], self.rotatePoint[1], 1], dtype=np.float64))
+        return x, y
+
+    def getStatusText(self):
+        if self.anchorPoint is None:
+            return None
+        return '%4.2f; %4.2f' % self.anchorPoint
 
     def isLightFrame(self):
         return self.frameId == AstroFrame.FRAME_LIGHT
@@ -102,16 +123,26 @@ class AstroFrame:
             img = np.maximum(0, self.image.astype(np.float64) - self.dark.image.astype(np.float64))
             self.image = img.astype(np.uint8)
 
-        if self.movePoint is not None:
-            self.offset = (self.movePoint[0] - self.point[0], self.movePoint[1] - self.point[1])
-            for i in range(3):
-                self.image[...,i] = shift(self.image[...,i], self.offset[::-1])
+        offsetMatrix = np.array([[1, 0, self.anchorPoint[0]], [0, 1, self.anchorPoint[1]], [0, 0, 1]], dtype=np.float64)
+        self.matrix = np.matmul(self.translateMatrix, np.matmul(offsetMatrix, np.matmul(self.rotateMatrix, np.linalg.inv(offsetMatrix))))
+        self.matrixInv = np.linalg.inv(self.matrix)
+        for i in range(3):
+            self.image[...,i] = np.transpose(affine_transform(np.transpose(self.image[...,i]), self.matrixInv))
 
-    def move(self, point):
-        if point is not None:
-            if self.point is None:
-                self.fit()
-            self.movePoint = point
+    def align(self, anchorPoint, rotatePoint):
+        if anchorPoint is not None and self.anchorPoint is not None:
+            self.translateMatrix = np.array([[1, 0, anchorPoint[0]-self.anchorPoint[0]], [0, 1, anchorPoint[1]-self.anchorPoint[1]], [0, 0, 1]], dtype=np.float64)
+
+            if rotatePoint is not None and self.rotatePoint is not None:
+                dyRef = rotatePoint[1] - anchorPoint[1]
+                dxRef = rotatePoint[0] - anchorPoint[0]
+                dy = self.rotatePoint[1] - self.anchorPoint[1]
+                dx = self.rotatePoint[0] - self.anchorPoint[0]
+                angle = np.arctan2(dyRef, dxRef) - np.arctan2(dy, dx)
+                cos = np.cos(angle)
+                sin = np.sin(angle)
+                self.rotateMatrix = np.array([[cos, -sin, 0], [sin, cos, 0], [0, 0, 1]], dtype=np.float64)
+
             self.pipeline()
 
     def subtract(self, dark):
@@ -141,9 +172,13 @@ class FramePanel(wx.Panel):
         self.clear(draw=False)
         self.axes.imshow(frame.image)
 
-        x, y = frame.getPoint()
-        if x is not None and y is not None:
-            self.axes.plot([x], [y], color='blue', marker='+', markersize=20)
+        p = frame.getAnchorPoint()
+        if p is not None:
+            self.axes.plot([p[0]], [p[1]], color='blue', marker='+', markersize=20)
+
+        p = frame.getRotatePoint()
+        if p is not None:
+            self.axes.plot([p[0]], [p[1]], color='red', marker='+', markersize=20)
 
         self.axes.plot([0,frame.width], [frame.height,frame.height], color='grey', linewidth=2, linestyle='-')
         self.axes.plot([frame.width,frame.width], [0,frame.height], color='grey', linewidth=2, linestyle='-')
@@ -323,9 +358,9 @@ class AstroPhoto(wx.Frame):
             if updateStatus:
                 self.status.SetStatusText('%i' % self.currFrame, 0)
                 self.status.SetStatusText(self.frames[self.currFrame].description, 1)
-                p = self.frames[self.currFrame].point
+                p = self.frames[self.currFrame].getStatusText()
                 if p is not None:
-                    self.status.SetStatusText('%3.2f; %3.2f' % p, 2)
+                    self.status.SetStatusText(p, 2)
         else:
             self.framepanel.clear()
             self.status.SetStatusText('', 0)
@@ -370,7 +405,10 @@ class AstroPhoto(wx.Frame):
     @drawAfter
     @backupAfter
     def onFrameClick(self, e):
-        self.frames[self.currFrame].setPoint(e.x, self.frames[self.currFrame].height - e.y)
+        if e.button == 1:
+            self.frames[self.currFrame].setAnchorPoint(e.x, self.frames[self.currFrame].height - e.y)
+        else:
+            self.frames[self.currFrame].setRotatePoint(e.x, self.frames[self.currFrame].height - e.y)
 
     @notLive
     @hasFrames
@@ -404,15 +442,19 @@ class AstroPhoto(wx.Frame):
     @drawAfter
     @backupAfter
     def onFitAll(self, e):
-        previousPoint = None
+        previousAnchorPoint = None
+        previousRotatePoint = None
         for n in self.framesById(AstroFrame.FRAME_LIGHT):
             self.statusInfo('Fitting light frames...')
-            if previousPoint is not None:
-                self.frames[n].setPoint(*previousPoint)
+            if previousAnchorPoint is not None:
+                self.frames[n].setAnchorPoint(*previousAnchorPoint)
+            if previousRotatePoint is not None:
+                self.frames[n].setRotatePoint(*previousRotatePoint)
             self.frames[n].fit()
             self.currFrame = n
             self.drawFrame(False)
-            previousPoint = self.frames[n].getPoint()
+            previousAnchorPoint = self.frames[n].getAnchorPoint()
+            previousRotatePoint = self.frames[n].getRotatePoint()
 
     @notLive
     @hasFrames
@@ -423,7 +465,7 @@ class AstroPhoto(wx.Frame):
         ns = self.framesById(AstroFrame.FRAME_LIGHT)
         for n in ns:
             self.statusInfo('Aligning light frames...')
-            self.frames[n].move(self.frames[ns[0]].getPoint())
+            self.frames[n].align(self.frames[ns[0]].getAnchorPoint(), self.frames[ns[0]].getRotatePoint())
             self.currFrame = n
             self.drawFrame(False)
 

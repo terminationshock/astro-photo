@@ -123,9 +123,10 @@ class AstroFrame:
             img = np.maximum(0, self.image.astype(np.float64) - self.dark.image.astype(np.float64))
             self.image = img.astype(np.uint8)
 
-        offsetMatrix = np.array([[1, 0, self.anchorPoint[0]], [0, 1, self.anchorPoint[1]], [0, 0, 1]], dtype=np.float64)
-        self.matrix = np.matmul(self.translateMatrix, np.matmul(offsetMatrix, np.matmul(self.rotateMatrix, np.linalg.inv(offsetMatrix))))
-        self.matrixInv = np.linalg.inv(self.matrix)
+        if self.anchorPoint is not None:
+            offsetMatrix = np.array([[1, 0, self.anchorPoint[0]], [0, 1, self.anchorPoint[1]], [0, 0, 1]], dtype=np.float64)
+            self.matrix = np.matmul(self.translateMatrix, np.matmul(offsetMatrix, np.matmul(self.rotateMatrix, np.linalg.inv(offsetMatrix))))
+            self.matrixInv = np.linalg.inv(self.matrix)
         for i in range(3):
             self.image[...,i] = np.transpose(affine_transform(np.transpose(self.image[...,i]), self.matrixInv))
 

@@ -45,7 +45,3 @@ The program stores backups after each step, which you can restore if you click o
 ## Run
 
 Build the Fortran helper library first with `make`. Then start the application with `./astrophoto.py`. If your camera is not reachable at `/dev/video0`, you can pass the correct stream index as command line argument.
-
-## License
-
-[GPL v3](https://www.gnu.org/licenses/gpl-3.0)
